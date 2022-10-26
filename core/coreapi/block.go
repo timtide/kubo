@@ -77,6 +77,12 @@ func (api *BlockAPI) Get(ctx context.Context, p path.Path) (io.Reader, error) {
 		return nil, err
 	}
 
+	config, err := api.repo.Config()
+	if err != nil {
+		return nil, err
+	}
+	ctx = context.WithValue(ctx, "TitanIps", config.TitanIps)
+
 	b, err := api.blocks.GetBlock(ctx, rp.Cid())
 	if err != nil {
 		return nil, err
@@ -134,6 +140,12 @@ func (api *BlockAPI) Stat(ctx context.Context, p path.Path) (coreiface.BlockStat
 	if err != nil {
 		return nil, err
 	}
+
+	config, err := api.repo.Config()
+	if err != nil {
+		return nil, err
+	}
+	ctx = context.WithValue(ctx, "TitanIps", config.TitanIps)
 
 	b, err := api.blocks.GetBlock(ctx, rp.Cid())
 	if err != nil {

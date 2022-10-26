@@ -38,6 +38,8 @@ type Config struct {
 	Pinning      Pinning
 
 	Internal Internal // experimental/unstable options
+
+	TitanIps []string // ip address of titan scheduler service
 }
 
 const (

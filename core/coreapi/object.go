@@ -145,6 +145,11 @@ func (api *ObjectAPI) Put(ctx context.Context, src io.Reader, opts ...caopts.Obj
 func (api *ObjectAPI) Get(ctx context.Context, path ipath.Path) (ipld.Node, error) {
 	ctx, span := tracing.Span(ctx, "CoreAPI.ObjectAPI", "Get", trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
+	config, err := api.repo.Config()
+	if err != nil {
+		return nil, err
+	}
+	ctx = context.WithValue(ctx, "TitanIps", config.TitanIps)
 	return api.core().ResolveNode(ctx, path)
 }
 
@@ -152,6 +157,11 @@ func (api *ObjectAPI) Data(ctx context.Context, path ipath.Path) (io.Reader, err
 	ctx, span := tracing.Span(ctx, "CoreAPI.ObjectAPI", "Data", trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
 
+	config, err := api.repo.Config()
+	if err != nil {
+		return nil, err
+	}
+	ctx = context.WithValue(ctx, "TitanIps", config.TitanIps)
 	nd, err := api.core().ResolveNode(ctx, path)
 	if err != nil {
 		return nil, err

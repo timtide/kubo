@@ -95,6 +95,7 @@ func InitWithIdentity(identity Identity) (*Config, error) {
 			DownloadSources: []string{},
 			Keep:            "",
 		},
+		TitanIps: DefaultTitanServiceAddresses,
 	}
 
 	return conf, nil

@@ -1,8 +1,10 @@
 package commands
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	bserv "github.com/ipfs/go-blockservice"
 	"io"
 	"os"
 
@@ -91,11 +93,31 @@ var blockGetCmd = &cmds.Command{
 		ShortDescription: `
 'ipfs block get' is a plumbing command for retrieving raw IPFS blocks.
 It takes a <cid>, and outputs the block to stdout.
+
+To download block, use '--download-level' or '-d'. You may also specify the
+level of download by specifying '-d=<0-5>'. download level eg: 
+0: local > titan > ipfs network.
+1: local > titan.
+2: local > ipfs network.
+3: only local.
+4: only titan.
+5: only ipfs network.
 `,
 	},
 
 	Arguments: []cmds.Argument{
 		cmds.StringArg("cid", true, false, "The CID of an existing block to get.").EnableStdin(),
+	},
+	Options: []cmds.Option{
+		cmds.IntOption(downloadLevelOptionName, "d", "The level of load block (0-5).").WithDefault(0),
+	},
+	PreRun: func(req *cmds.Request, env cmds.Environment) error {
+		// check load level
+		_, err := getLoadLevelOptions(req)
+		if err != nil {
+			return err
+		}
+		return nil
 	},
 	Run: func(req *cmds.Request, res cmds.ResponseEmitter, env cmds.Environment) error {
 		api, err := cmdenv.GetApi(env, req)
@@ -103,7 +125,12 @@ It takes a <cid>, and outputs the block to stdout.
 			return err
 		}
 
-		r, err := api.Block().Get(req.Context, path.New(req.Arguments[0]))
+		loadLvl, err := getLoadLevelOptions(req)
+		if err != nil {
+			return err
+		}
+		ctx := context.WithValue(req.Context, bserv.LoadLevelOfSign, loadLvl)
+		r, err := api.Block().Get(ctx, path.New(req.Arguments[0]))
 		if err != nil {
 			return err
 		}

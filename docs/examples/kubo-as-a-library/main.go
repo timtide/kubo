@@ -320,9 +320,10 @@ func main() {
 		}
 	}()
 
-	exampleCIDStr := peerCidFile.Cid().String()
-
+	// exampleCIDStr := peerCidFile.Cid().String()
+	exampleCIDStr := "bafkreia5lywtofhazb2glmwem62jqrz67yetcq6oatucrywx4gltf7xhu4"
 	fmt.Printf("Fetching a file from the network with CID %s\n", exampleCIDStr)
+	fmt.Println("--------------------")
 	outputPath := outputBasePath + exampleCIDStr
 	testCID := icorepath.New(exampleCIDStr)
 

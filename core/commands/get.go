@@ -3,18 +3,22 @@ package commands
 import (
 	"bufio"
 	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
+	units "github.com/docker/go-units"
+	"github.com/ipfs/kubo/core/commands/cmdenv"
+	"github.com/ipfs/kubo/core/commands/e"
+	"github.com/shopspring/decimal"
 	"io"
 	"os"
 	gopath "path"
 	"path/filepath"
 	"strings"
-
-	"github.com/ipfs/kubo/core/commands/cmdenv"
-	"github.com/ipfs/kubo/core/commands/e"
+	"time"
 
 	"github.com/cheggaaa/pb"
+	bserv "github.com/ipfs/go-blockservice"
 	cmds "github.com/ipfs/go-ipfs-cmds"
 	files "github.com/ipfs/go-ipfs-files"
 	"github.com/ipfs/interface-go-ipfs-core/path"
@@ -22,12 +26,14 @@ import (
 )
 
 var ErrInvalidCompressionLevel = errors.New("compression level must be between 1 and 9")
+var ErrLoadLevel = errors.New("load level must be between 0 and 5")
 
 const (
 	outputOptionName           = "output"
 	archiveOptionName          = "archive"
 	compressOptionName         = "compress"
 	compressionLevelOptionName = "compression-level"
+	downloadLevelOptionName    = "download-level"
 )
 
 var GetCmd = &cmds.Command{
@@ -43,6 +49,15 @@ To output a TAR archive instead of unpacked files, use '--archive' or '-a'.
 
 To compress the output with GZIP compression, use '--compress' or '-C'. You
 may also specify the level of compression by specifying '-l=<1-9>'.
+
+To download block, use '--download-level' or '-d'. You may also specify the
+level of download by specifying '-d=<0-5>'. download level eg: 
+0: local > titan > ipfs network.
+1: local > titan.
+2: local > ipfs network.
+3: only local.
+4: only titan.
+5: only ipfs network.
 `,
 	},
 
@@ -55,13 +70,25 @@ may also specify the level of compression by specifying '-l=<1-9>'.
 		cmds.BoolOption(compressOptionName, "C", "Compress the output with GZIP compression."),
 		cmds.IntOption(compressionLevelOptionName, "l", "The level of compression (1-9)."),
 		cmds.BoolOption(progressOptionName, "p", "Stream progress data.").WithDefault(true),
+		cmds.IntOption(downloadLevelOptionName, "d", "The level of load block (0-5).").WithDefault(0),
 	},
 	PreRun: func(req *cmds.Request, env cmds.Environment) error {
 		_, err := getCompressOptions(req)
-		return err
+		if err != nil {
+			return err
+		}
+		// check load level
+		_, err = getLoadLevelOptions(req)
+		if err != nil {
+			return err
+		}
+		return nil
 	},
 	Run: func(req *cmds.Request, res cmds.ResponseEmitter, env cmds.Environment) error {
 		ctx := req.Context
+		log.Debugf("======================>>>")
+		log.Debugf("%s", "download begin")
+		begin := time.Now()
 		cmplvl, err := getCompressOptions(req)
 		if err != nil {
 			return err
@@ -74,6 +101,11 @@ may also specify the level of compression by specifying '-l=<1-9>'.
 
 		p := path.New(req.Arguments[0])
 
+		loadLvl, err := getLoadLevelOptions(req)
+		if err != nil {
+			return err
+		}
+		ctx = context.WithValue(ctx, bserv.LoadLevelOfSign, loadLvl)
 		file, err := api.Unixfs().Get(ctx, p)
 		if err != nil {
 			return err
@@ -98,8 +130,22 @@ may also specify the level of compression by specifying '-l=<1-9>'.
 			<-ctx.Done()
 			reader.Close()
 		}()
+		err = res.Emit(reader)
+		if err != nil {
+			return err
+		}
 
-		return res.Emit(reader)
+		log.Debugf("%s", "download finish")
+
+		total := time.Since(begin)
+		log.Debugf("total file size is %s", units.BytesSize(float64(size)))
+		log.Debugf("%s%s", "total download time is ", total.Round(time.Millisecond).String())
+		sz := decimal.NewFromFloat(float64(size)).Div(decimal.NewFromFloat(1024 * 1024))
+		tm := decimal.NewFromFloat(float64(total.Milliseconds())).Div(decimal.NewFromFloat(1e3))
+		rs := sz.DivRound(tm, 2)
+		log.Debugf("%s%v%s", "download rate is ", rs, "MB/s")
+		log.Debugf("<<<======================")
+		return nil
 	},
 	PostRun: cmds.PostRunMap{
 		cmds.CLI: func(res cmds.Response, re cmds.ResponseEmitter) error {
@@ -249,6 +295,14 @@ func (gw *getWriter) writeExtracted(r io.Reader, fpath string) error {
 
 	extractor := &tar.Extractor{Path: fpath, Progress: progressCb}
 	return extractor.Extract(r)
+}
+
+func getLoadLevelOptions(req *cmds.Request) (uint8, error) {
+	level := uint8(req.Options[downloadLevelOptionName].(int))
+	if level < bserv.LoadOfLocalTitanIpfs.Uint8() || level > bserv.LoadOfOnlyIpfs.Uint8() {
+		return 0, ErrLoadLevel
+	}
+	return level, nil
 }
 
 func getCompressOptions(req *cmds.Request) (int, error) {

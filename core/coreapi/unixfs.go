@@ -206,6 +206,12 @@ func (api *UnixfsAPI) Get(ctx context.Context, p path.Path) (files.Node, error) 
 
 	ses := api.core().getSession(ctx)
 
+	config, err := api.repo.Config()
+	if err != nil {
+		return nil, err
+	}
+	ctx = context.WithValue(ctx, "TitanIps", config.TitanIps)
+
 	nd, err := ses.ResolveNode(ctx, p)
 	if err != nil {
 		return nil, err
